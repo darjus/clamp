@@ -1,4 +1,7 @@
 import logging
+import sys
+import os
+import ast
 
 import java
 from java.io import Serializable
@@ -6,6 +9,7 @@ from java.lang.reflect import Modifier
 from org.python.core import Py
 from org.python.compiler import CustomMaker, ProxyCodeHelpers
 from org.python.util import CodegenUtils
+from org.python.indexer import Indexer
 
 from clamp.build import get_builder
 from clamp.signature import Constant
@@ -115,6 +119,32 @@ class ClampProxyMaker(object):
         """Constructs a usable proxy name that does not depend on ordering"""
         log.debug("Called ClampProxyMaker: %s, %r, %r, %s, %s, %s, %r", self.package, superclass, interfaces,
                   className, pythonModuleName, fullProxyName, mapping)
+
+        module = sys.modules[pythonModuleName]
+        # FIXME distinguish between $py.class and .py better
+        module_file = module.__file__
+        if '$' in module_file:
+            module_file = "{0}.py".format(module.__file__.split('$')[0])
+
+        try:
+            f = open(module_file)
+            module_ast = ast.parse(f.read(), module_file)
+        finally:
+            f.close()
+
+        classdef = None
+        for node in module_ast.body:
+            if isinstance(node, ast.ClassDef) and node.name == className:
+                classdef = node
+
+        for decorator_node in classdef.decorator_list:
+            if decorator_node.func.id == 'annotate_class':
+                annotation_name = decorator_node.args[0].id
+                annotation = getattr(module, annotation_name)
+
+                print annotation  # do something with it
+                import pdb; pdb.set_trace()
+
         return SerializableProxyMaker(
             superclass, interfaces, className, pythonModuleName,
             self.package + "." + pythonModuleName + "." + className, mapping,
